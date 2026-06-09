@@ -12,21 +12,33 @@ Once imported, signing operations (e.g. JWT for GitHub API authentication) are p
   - KeyUsage: `SIGN_VERIFY`
   - Origin: `EXTERNAL`
 
-## Installation
+## Quick run
 
-### Nix Flakes
+```sh
+go run github.com/cons-tan-tan/import-github-app-key@latest --help
+```
+
+Nix flakes are also supported:
 
 ```sh
 nix run github:cons-tan-tan/import-github-app-key -- --help
 ```
 
-### Go
+## Usage
+
+With Go:
 
 ```sh
-go install github.com/cons-tan-tan/import-github-app-key@latest
+go run github.com/cons-tan-tan/import-github-app-key@latest [flags] <key-id> <pem-file>
 ```
 
-## Usage
+With Nix:
+
+```sh
+nix run github:cons-tan-tan/import-github-app-key -- [flags] <key-id> <pem-file>
+```
+
+The examples below use `import-github-app-key` as the command name shown in help output. For one-shot use, replace it with either runner above.
 
 ```
 import-github-app-key [flags] <key-id> <pem-file>
