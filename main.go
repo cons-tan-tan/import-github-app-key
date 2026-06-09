@@ -27,7 +27,7 @@ type CLI struct {
 	Verify    *int             `short:"v" optional:"" help:"GitHub App ID. If specified, validates the imported key by calling the GitHub API."`
 	Delete    bool             `short:"d" optional:"" help:"Delete the PEM file after a successful import without prompting."`
 	DryRun    bool             `optional:"" help:"Validate the PEM file and KMS wrapping parameters without importing."`
-	GitHubURL string           `optional:"" default:"https://api.github.com" help:"GitHub API base URL. Set this for GitHub Enterprise Server (e.g. https://github.example.com/api/v3)."`
+	GitHubURL string           `name:"github-url" optional:"" default:"https://api.github.com" help:"GitHub API base URL. Set this for GitHub Enterprise Server (e.g. https://github.example.com/api/v3)."`
 }
 
 // Validate implements kong.Validatable.
