@@ -52,9 +52,23 @@
               "-X main.version=${version}"
             ];
             checkFlags = [ "-race" ];
+            meta = {
+              description = "Import GitHub App private keys into AWS KMS";
+              mainProgram = "import-github-app-key";
+            };
           };
         }
       );
+
+      apps = forAllSystems (system: {
+        default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/import-github-app-key";
+          meta = {
+            description = "Import GitHub App private keys into AWS KMS";
+          };
+        };
+      });
 
       devShells = forAllSystems (
         system:
