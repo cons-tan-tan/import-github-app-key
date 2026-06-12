@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -232,4 +233,97 @@ func TestRun_DryRun(t *testing.T) {
 	if strings.Contains(output, "Importing into KMS") {
 		t.Error("should not attempt import in dry-run mode")
 	}
+}
+
+func TestRun_VerifyFailure_DoesNotDeletePEM(t *testing.T) {
+	// Copy testdata PEM to a temp file.
+	data, err := os.ReadFile("testdata/pkcs1.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	tmpPEM := filepath.Join(dir, "key.pem")
+	if err := os.WriteFile(tmpPEM, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// newWrappingKeyMock does not implement Sign, so validateWithGitHub will fail.
+	mock := newWrappingKeyMock(t)
+
+	var stdout bytes.Buffer
+	stdin := strings.NewReader("")
+
+	appID := 12345
+	err = run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+		GitHubBaseURL: "https://api.github.com",
+		KeyID:         "test-key-id",
+		PEMFile:       tmpPEM,
+		AppID:         &appID,
+		DeletePEM:     true,
+	})
+
+	// run() must return an error containing "validation failed".
+	if err == nil {
+		t.Fatal("expected error from validation, got nil")
+	}
+	if !strings.Contains(err.Error(), "validation failed") {
+		t.Errorf("expected error to contain 'validation failed', got: %v", err)
+	}
+
+	// The PEM file must still exist — it must NOT have been deleted.
+	if _, statErr := os.Stat(tmpPEM); statErr != nil {
+		t.Errorf("PEM file should not have been deleted on validation failure, but os.Stat returned: %v", statErr)
+	}
+
+	// The output must not contain "Deleted:".
+	if strings.Contains(stdout.String(), "Deleted:") {
+		t.Error("output must not contain 'Deleted:' when validation fails")
+	}
+}
+
+func TestRun_KMSErrors(t *testing.T) {
+	t.Run("GetParametersForImport error", func(t *testing.T) {
+		mock := &mockKMSClient{
+			getParametersForImportFn: func(_ context.Context, _ *kms.GetParametersForImportInput, _ ...func(*kms.Options)) (*kms.GetParametersForImportOutput, error) {
+				return nil, fmt.Errorf("simulated KMS error")
+			},
+		}
+
+		var stdout bytes.Buffer
+		stdin := strings.NewReader("")
+
+		err := run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+			GitHubBaseURL: "https://api.github.com",
+			KeyID:         "test-key-id",
+			PEMFile:       "testdata/pkcs1.pem",
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "failed to get wrapping parameters") {
+			t.Errorf("expected error to contain 'failed to get wrapping parameters', got: %v", err)
+		}
+	})
+
+	t.Run("ImportKeyMaterial error", func(t *testing.T) {
+		mock := newWrappingKeyMock(t)
+		mock.importKeyMaterialFn = func(_ context.Context, _ *kms.ImportKeyMaterialInput, _ ...func(*kms.Options)) (*kms.ImportKeyMaterialOutput, error) {
+			return nil, fmt.Errorf("simulated import error")
+		}
+
+		var stdout bytes.Buffer
+		stdin := strings.NewReader("")
+
+		err := run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+			GitHubBaseURL: "https://api.github.com",
+			KeyID:         "test-key-id",
+			PEMFile:       "testdata/pkcs1.pem",
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "KMS import failed") {
+			t.Errorf("expected error to contain 'KMS import failed', got: %v", err)
+		}
+	})
 }
