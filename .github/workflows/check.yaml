@@ -17,3 +17,20 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-
       - run: nix flake check
       - run: nix build
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+      - run: nix profile install --inputs-from . nixpkgs#go nixpkgs#go-tools nixpkgs#govulncheck
+      - run: go vet ./...
+      - run: staticcheck ./...
+      - run: govulncheck ./...
+      - run: go test -race ./...

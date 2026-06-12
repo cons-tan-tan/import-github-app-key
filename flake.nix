@@ -81,6 +81,8 @@
               go
               gopls
               goreleaser
+              go-tools # staticcheck
+              govulncheck
               treefmtEval.${system}.config.build.wrapper
             ];
           };
