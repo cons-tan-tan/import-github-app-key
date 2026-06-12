@@ -45,7 +45,7 @@
             pname = "import-github-app-key";
             inherit version;
             src = ./.;
-            vendorHash = "sha256-HJBbPD8rZUxF4Pi7+axCjp2nQzP0UXGG5Md4LfqUqxc=";
+            vendorHash = "sha256-77O7Dpt82iz4eDMmijpsJNeKoUBd93O6boplMRUD3fY=";
             ldflags = [
               "-s"
               "-w"
