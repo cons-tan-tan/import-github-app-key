@@ -28,25 +28,32 @@ func aesKeyWrapWithPadding(kek, plaintext []byte) ([]byte, error) {
 	binary.BigEndian.PutUint32(aiv[4:], uint32(len(plaintext)))
 
 	// Pad to a multiple of 8 bytes with zero bytes.
-	padded := make([]byte, len(plaintext))
-	copy(padded, plaintext)
-	if rem := len(padded) % 8; rem != 0 {
-		padded = append(padded, make([]byte, 8-rem)...)
+	paddedLen := len(plaintext)
+	if rem := paddedLen % 8; rem != 0 {
+		paddedLen += 8 - rem
 	}
+	padded := make([]byte, paddedLen)
+	defer zeroBytes(padded)
+	copy(padded, plaintext)
 
 	n := len(padded) / 8
 
 	if n == 1 {
 		// Single block: AES-ECB encrypt AIV || padded.
 		var buf [aes.BlockSize]byte
+		defer zeroBytes(buf[:])
 		copy(buf[:8], aiv[:])
 		copy(buf[8:], padded)
 		block.Encrypt(buf[:], buf[:])
-		return buf[:], nil
+
+		result := make([]byte, aes.BlockSize)
+		copy(result, buf[:])
+		return result, nil
 	}
 
 	// Multiple blocks: RFC 3394 key wrap with AIV as the initial A value.
 	r := make([][]byte, n)
+	defer zeroByteSlices(r)
 	for i := range r {
 		r[i] = make([]byte, 8)
 		copy(r[i], padded[i*8:(i+1)*8])
@@ -56,6 +63,7 @@ func aesKeyWrapWithPadding(kek, plaintext []byte) ([]byte, error) {
 	copy(a, aiv[:])
 
 	var buf [aes.BlockSize]byte
+	defer zeroBytes(buf[:])
 	for j := 0; j <= 5; j++ {
 		for i := 0; i < n; i++ {
 			copy(buf[:8], a)
@@ -77,4 +85,16 @@ func aesKeyWrapWithPadding(kek, plaintext []byte) ([]byte, error) {
 		result = append(result, ri...)
 	}
 	return result, nil
+}
+
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
+func zeroByteSlices(slices [][]byte) {
+	for _, b := range slices {
+		zeroBytes(b)
+	}
 }
