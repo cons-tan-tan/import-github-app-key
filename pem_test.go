@@ -1,10 +1,15 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -97,5 +102,57 @@ func TestPemToPKCS8DER_UnsupportedType(t *testing.T) {
 	_, err := pemToPKCS8DER(path)
 	if err == nil {
 		t.Fatal("expected error for unsupported PEM type, got nil")
+	}
+}
+
+func TestPemToPKCS8DER_NonRSAKey(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate EC key: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(ecKey)
+	if err != nil {
+		t.Fatalf("failed to marshal EC key: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ec.pem")
+	if err := os.WriteFile(path, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = pemToPKCS8DER(path)
+	if err == nil {
+		t.Fatal("expected error for non-RSA key, got nil")
+	}
+	if !strings.Contains(err.Error(), "not an RSA private key") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestPemToPKCS8DER_WrongKeySize(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatalf("failed to generate RSA 1024 key: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+	if err != nil {
+		t.Fatalf("failed to marshal RSA 1024 key: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rsa1024.pem")
+	if err := os.WriteFile(path, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = pemToPKCS8DER(path)
+	if err == nil {
+		t.Fatal("expected error for 1024-bit RSA key, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected RSA key size: 1024") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
