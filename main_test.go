@@ -47,6 +47,37 @@ func TestCLIValidate(t *testing.T) {
 			cli:     CLI{DryRun: true, Verify: ptr(1)},
 			wantErr: true,
 		},
+		{
+			name:    "provider aws",
+			cli:     CLI{Provider: "aws"},
+			wantErr: false,
+		},
+		{
+			name:    "provider gcp requires import job",
+			cli:     CLI{Provider: "gcp"},
+			wantErr: true,
+		},
+		{
+			name: "provider gcp with import job",
+			cli: CLI{
+				Provider:     "gcp",
+				GCPImportJob: "projects/p/locations/global/keyRings/r/importJobs/j",
+			},
+			wantErr: false,
+		},
+		{
+			name: "gcp import job requires gcp provider",
+			cli: CLI{
+				Provider:     "aws",
+				GCPImportJob: "projects/p/locations/global/keyRings/r/importJobs/j",
+			},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported provider",
+			cli:     CLI{Provider: "azure"},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {

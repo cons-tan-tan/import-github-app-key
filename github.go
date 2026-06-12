@@ -10,14 +10,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/service/kms"
-	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 )
 
 // validateWithGitHub signs a JWT using the KMS key and verifies it against the
 // GitHub API (GET /app). This confirms the imported key is valid for the given app.
-func validateWithGitHub(ctx context.Context, client KMSClient, httpClient *http.Client, stdout io.Writer, githubBaseURL, keyID string, appID int) error {
+func validateWithGitHub(ctx context.Context, signer digestSigner, httpClient *http.Client, stdout io.Writer, githubBaseURL string, appID int) error {
 	now := time.Now().Unix()
 	header := `{"alg":"RS256","typ":"JWT"}`
 	payload := fmt.Sprintf(`{"iat":%d,"exp":%d,"iss":%d}`, now-60, now+480, appID)
@@ -25,18 +22,12 @@ func validateWithGitHub(ctx context.Context, client KMSClient, httpClient *http.
 	signingInput := base64URLEncode([]byte(header)) + "." + base64URLEncode([]byte(payload))
 
 	digest := sha256.Sum256([]byte(signingInput))
-	signOut, err := client.Sign(ctx, &kms.SignInput{
-		KeyId:       &keyID,
-		Message:     digest[:],
-		MessageType: types.MessageTypeDigest,
-		// RS256 (RFC 7518) corresponds to RSASSA-PKCS1-v1_5 using SHA-256.
-		SigningAlgorithm: types.SigningAlgorithmSpecRsassaPkcs1V15Sha256,
-	})
+	signature, err := signer.SignDigest(ctx, digest[:])
 	if err != nil {
 		return fmt.Errorf("KMS signing failed: %w", err)
 	}
 
-	jwt := signingInput + "." + base64URLEncode(signOut.Signature)
+	jwt := signingInput + "." + base64URLEncode(signature)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubBaseURL, "/")+"/app", nil)
 	if err != nil {

@@ -42,19 +42,24 @@ func (m *mockKMSClient) Sign(ctx context.Context, params *kms.SignInput, optFns 
 	return nil, fmt.Errorf("Sign not implemented")
 }
 
-// newTestSignerMock creates a mockKMSClient that signs with the given RSA private key.
-func newTestSignerMock(t *testing.T, privKey *rsa.PrivateKey) *mockKMSClient {
+type testDigestSigner struct {
+	signFn func(ctx context.Context, digest []byte) ([]byte, error)
+}
+
+func (s testDigestSigner) SignDigest(ctx context.Context, digest []byte) ([]byte, error) {
+	return s.signFn(ctx, digest)
+}
+
+// newTestSigner creates a digestSigner that signs with the given RSA private key.
+func newTestSigner(t *testing.T, privKey *rsa.PrivateKey) digestSigner {
 	t.Helper()
-	return &mockKMSClient{
-		signFn: func(_ context.Context, params *kms.SignInput, _ ...func(*kms.Options)) (*kms.SignOutput, error) {
-			if params.SigningAlgorithm != types.SigningAlgorithmSpecRsassaPkcs1V15Sha256 {
-				return nil, fmt.Errorf("unexpected algorithm: %s", params.SigningAlgorithm)
-			}
-			sig, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, params.Message)
+	return testDigestSigner{
+		signFn: func(_ context.Context, digest []byte) ([]byte, error) {
+			sig, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, digest)
 			if err != nil {
 				return nil, err
 			}
-			return &kms.SignOutput{Signature: sig}, nil
+			return sig, nil
 		},
 	}
 }

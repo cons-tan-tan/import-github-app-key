@@ -104,9 +104,8 @@ func TestRun_Success(t *testing.T) {
 	var stdout bytes.Buffer
 	stdin := strings.NewReader("n\n")
 
-	err := run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+	err := run(context.Background(), newAWSProvider(mock, "test-key-id"), http.DefaultClient, stdin, &stdout, runConfig{
 		GitHubBaseURL: "https://api.github.com",
-		KeyID:         "test-key-id",
 		PEMFile:       "testdata/pkcs1.pem",
 	})
 	if err != nil {
@@ -143,9 +142,8 @@ func TestRun_DeletePEM(t *testing.T) {
 	var stdout bytes.Buffer
 	stdin := strings.NewReader("y\n")
 
-	err = run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+	err = run(context.Background(), newAWSProvider(mock, "test-key-id"), http.DefaultClient, stdin, &stdout, runConfig{
 		GitHubBaseURL: "https://api.github.com",
-		KeyID:         "test-key-id",
 		PEMFile:       tmpPEM,
 	})
 	if err != nil {
@@ -179,9 +177,8 @@ func TestRun_DeleteFlag(t *testing.T) {
 	// stdin is empty — no interactive input needed when --delete is set.
 	stdin := strings.NewReader("")
 
-	err = run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+	err = run(context.Background(), newAWSProvider(mock, "test-key-id"), http.DefaultClient, stdin, &stdout, runConfig{
 		GitHubBaseURL: "https://api.github.com",
-		KeyID:         "test-key-id",
 		PEMFile:       tmpPEM,
 		DeletePEM:     true,
 	})
@@ -213,9 +210,8 @@ func TestRun_DryRun(t *testing.T) {
 	var stdout bytes.Buffer
 	stdin := strings.NewReader("")
 
-	err := run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+	err := run(context.Background(), newAWSProvider(mock, "test-key-id"), http.DefaultClient, stdin, &stdout, runConfig{
 		GitHubBaseURL: "https://api.github.com",
-		KeyID:         "test-key-id",
 		PEMFile:       "testdata/pkcs1.pem",
 		DryRun:        true,
 	})
@@ -254,9 +250,8 @@ func TestRun_VerifyFailure_DoesNotDeletePEM(t *testing.T) {
 	stdin := strings.NewReader("")
 
 	appID := 12345
-	err = run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+	err = run(context.Background(), newAWSProvider(mock, "test-key-id"), http.DefaultClient, stdin, &stdout, runConfig{
 		GitHubBaseURL: "https://api.github.com",
-		KeyID:         "test-key-id",
 		PEMFile:       tmpPEM,
 		AppID:         &appID,
 		DeletePEM:     true,
@@ -292,9 +287,8 @@ func TestRun_KMSErrors(t *testing.T) {
 		var stdout bytes.Buffer
 		stdin := strings.NewReader("")
 
-		err := run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+		err := run(context.Background(), newAWSProvider(mock, "test-key-id"), http.DefaultClient, stdin, &stdout, runConfig{
 			GitHubBaseURL: "https://api.github.com",
-			KeyID:         "test-key-id",
 			PEMFile:       "testdata/pkcs1.pem",
 		})
 		if err == nil {
@@ -314,9 +308,8 @@ func TestRun_KMSErrors(t *testing.T) {
 		var stdout bytes.Buffer
 		stdin := strings.NewReader("")
 
-		err := run(context.Background(), mock, http.DefaultClient, stdin, &stdout, runConfig{
+		err := run(context.Background(), newAWSProvider(mock, "test-key-id"), http.DefaultClient, stdin, &stdout, runConfig{
 			GitHubBaseURL: "https://api.github.com",
-			KeyID:         "test-key-id",
 			PEMFile:       "testdata/pkcs1.pem",
 		})
 		if err == nil {

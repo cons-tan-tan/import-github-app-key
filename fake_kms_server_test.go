@@ -69,9 +69,8 @@ func TestRun_WithFakeKMSServer_ImportsAndVerifiesWithRealSDK(t *testing.T) {
 	defer githubServer.Close()
 
 	var stdout bytes.Buffer
-	err := run(context.Background(), client, githubServer.Client(), strings.NewReader("n\n"), &stdout, runConfig{
+	err := run(context.Background(), newAWSProvider(client, "fake-key-id"), githubServer.Client(), strings.NewReader("n\n"), &stdout, runConfig{
 		GitHubBaseURL: githubServer.URL,
-		KeyID:         "fake-key-id",
 		PEMFile:       "testdata/pkcs1.pem",
 		AppID:         &appID,
 	})

@@ -15,8 +15,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/aws/aws-sdk-go-v2/service/kms"
 )
 
 func TestValidateWithGitHub_Success(t *testing.T) {
@@ -66,9 +64,9 @@ func TestValidateWithGitHub_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	mock := newTestSignerMock(t, privKey)
+	signer := newTestSigner(t, privKey)
 	var stdout bytes.Buffer
-	err = validateWithGitHub(context.Background(), mock, server.Client(), &stdout, server.URL, "test-key-id", appID)
+	err = validateWithGitHub(context.Background(), signer, server.Client(), &stdout, server.URL, appID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,13 +76,13 @@ func TestValidateWithGitHub_Success(t *testing.T) {
 }
 
 func TestValidateWithGitHub_KMSSignError(t *testing.T) {
-	mock := &mockKMSClient{
-		signFn: func(_ context.Context, _ *kms.SignInput, _ ...func(*kms.Options)) (*kms.SignOutput, error) {
+	signer := testDigestSigner{
+		signFn: func(_ context.Context, _ []byte) ([]byte, error) {
 			return nil, fmt.Errorf("access denied")
 		},
 	}
 
-	err := validateWithGitHub(context.Background(), mock, http.DefaultClient, io.Discard, "https://api.github.com", "key-id", 1)
+	err := validateWithGitHub(context.Background(), signer, http.DefaultClient, io.Discard, "https://api.github.com", 1)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -102,8 +100,8 @@ func TestValidateWithGitHub_GitHubAPIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	mock := newTestSignerMock(t, privKey)
-	err := validateWithGitHub(context.Background(), mock, server.Client(), io.Discard, server.URL, "key-id", 1)
+	signer := newTestSigner(t, privKey)
+	err := validateWithGitHub(context.Background(), signer, server.Client(), io.Discard, server.URL, 1)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -121,8 +119,8 @@ func TestValidateWithGitHub_AppIDMismatch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	mock := newTestSignerMock(t, privKey)
-	err := validateWithGitHub(context.Background(), mock, server.Client(), io.Discard, server.URL, "key-id", 12345)
+	signer := newTestSigner(t, privKey)
+	err := validateWithGitHub(context.Background(), signer, server.Client(), io.Discard, server.URL, 12345)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -140,8 +138,8 @@ func TestValidateWithGitHub_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	mock := newTestSignerMock(t, privKey)
-	err := validateWithGitHub(context.Background(), mock, server.Client(), io.Discard, server.URL, "key-id", 1)
+	signer := newTestSigner(t, privKey)
+	err := validateWithGitHub(context.Background(), signer, server.Client(), io.Discard, server.URL, 1)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

@@ -12,22 +12,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
-
-	"github.com/aws/aws-sdk-go-v2/service/kms"
-	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 )
-
-// KMSClient is the subset of kms.Client methods used by this tool.
-type KMSClient interface {
-	GetParametersForImport(ctx context.Context, params *kms.GetParametersForImportInput, optFns ...func(*kms.Options)) (*kms.GetParametersForImportOutput, error)
-	ImportKeyMaterial(ctx context.Context, params *kms.ImportKeyMaterialInput, optFns ...func(*kms.Options)) (*kms.ImportKeyMaterialOutput, error)
-	Sign(ctx context.Context, params *kms.SignInput, optFns ...func(*kms.Options)) (*kms.SignOutput, error)
-}
 
 // runConfig holds the user-specified parameters for the import workflow.
 type runConfig struct {
 	GitHubBaseURL string
-	KeyID         string
 	PEMFile       string
 	AppID         *int
 	DeletePEM     bool
@@ -41,7 +30,7 @@ type runConfig struct {
 //  4. Import the key material into KMS
 //  5. (Optional) Validate the imported key by signing a JWT and calling the GitHub API
 //  6. Optionally delete the PEM file
-func run(ctx context.Context, client KMSClient, httpClient *http.Client, stdin io.Reader, stdout io.Writer, cfg runConfig) error {
+func run(ctx context.Context, provider keyImportProvider, httpClient *http.Client, stdin io.Reader, stdout io.Writer, cfg runConfig) error {
 	// Step 1: PEM -> PKCS#8 DER
 	privateKeyDER, err := pemToPKCS8DER(cfg.PEMFile)
 	if err != nil {
@@ -56,18 +45,14 @@ func run(ctx context.Context, client KMSClient, httpClient *http.Client, stdin i
 
 	// Step 2: Fetch KMS wrapping parameters
 	fmt.Fprintln(stdout, "Fetching KMS wrapping parameters...")
-	params, err := client.GetParametersForImport(ctx, &kms.GetParametersForImportInput{
-		KeyId:             &cfg.KeyID,
-		WrappingAlgorithm: types.AlgorithmSpecRsaAesKeyWrapSha256,
-		WrappingKeySpec:   types.WrappingKeySpecRsa4096,
-	})
+	wrappingPublicKeyDER, err := provider.WrappingPublicKeyDER(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get wrapping parameters: %w", err)
 	}
 
 	// Step 3: Encrypt the private key
 	fmt.Fprintln(stdout, "Encrypting private key...")
-	encrypted, err := encryptKeyMaterial(privateKeyDER, params.PublicKey)
+	encrypted, err := encryptKeyMaterial(privateKeyDER, wrappingPublicKeyDER)
 	if err != nil {
 		return fmt.Errorf("encryption failed: %w", err)
 	}
@@ -79,12 +64,7 @@ func run(ctx context.Context, client KMSClient, httpClient *http.Client, stdin i
 
 	// Step 4: Import into KMS
 	fmt.Fprintln(stdout, "Importing into KMS...")
-	_, err = client.ImportKeyMaterial(ctx, &kms.ImportKeyMaterialInput{
-		KeyId:                &cfg.KeyID,
-		EncryptedKeyMaterial: encrypted,
-		ImportToken:          params.ImportToken,
-		ExpirationModel:      types.ExpirationModelTypeKeyMaterialDoesNotExpire,
-	})
+	signer, err := provider.ImportKeyMaterial(ctx, encrypted)
 	if err != nil {
 		return fmt.Errorf("KMS import failed: %w", err)
 	}
@@ -93,7 +73,7 @@ func run(ctx context.Context, client KMSClient, httpClient *http.Client, stdin i
 	// Step 5: Validate with GitHub API (only if --verify is specified)
 	if cfg.AppID != nil {
 		fmt.Fprintln(stdout, "\nValidating with GitHub API...")
-		if err := validateWithGitHub(ctx, client, httpClient, stdout, cfg.GitHubBaseURL, cfg.KeyID, *cfg.AppID); err != nil {
+		if err := validateWithGitHub(ctx, signer, httpClient, stdout, cfg.GitHubBaseURL, *cfg.AppID); err != nil {
 			return fmt.Errorf("validation failed: %w", err)
 		}
 	}
