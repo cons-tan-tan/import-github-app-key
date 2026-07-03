@@ -8,7 +8,10 @@ type digestSigner interface {
 }
 
 // keyImportProvider supplies a wrapping key and imports encrypted key material.
+// ImportKeyMaterial returns a signer for the imported key and a human-readable
+// identifier of the import destination (AWS: key ID, GCP: CryptoKeyVersion
+// resource name).
 type keyImportProvider interface {
 	WrappingPublicKeyDER(ctx context.Context) ([]byte, error)
-	ImportKeyMaterial(ctx context.Context, encrypted []byte) (digestSigner, error)
+	ImportKeyMaterial(ctx context.Context, encrypted []byte) (digestSigner, string, error)
 }

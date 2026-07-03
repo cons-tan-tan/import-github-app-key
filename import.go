@@ -64,11 +64,11 @@ func run(ctx context.Context, provider keyImportProvider, httpClient *http.Clien
 
 	// Step 4: Import into KMS
 	fmt.Fprintln(stdout, "Importing into KMS...")
-	signer, err := provider.ImportKeyMaterial(ctx, encrypted)
+	signer, keyRef, err := provider.ImportKeyMaterial(ctx, encrypted)
 	if err != nil {
 		return fmt.Errorf("KMS import failed: %w", err)
 	}
-	fmt.Fprintln(stdout, "KMS import complete")
+	fmt.Fprintf(stdout, "KMS import complete: %s\n", keyRef)
 
 	// Step 5: Validate with GitHub API (only if --verify is specified)
 	if cfg.AppID != nil {

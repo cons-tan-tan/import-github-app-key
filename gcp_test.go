@@ -17,9 +17,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/googleapis/gax-go/v2"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const (
@@ -59,7 +61,7 @@ func TestRun_GCPImportsAndVerifies(t *testing.T) {
 	defer githubServer.Close()
 
 	var stdout bytes.Buffer
-	err := run(context.Background(), newGCPProvider(fakeKMS, testGCPKeyName, testGCPImportJobName), githubServer.Client(), strings.NewReader("n\n"), &stdout, runConfig{
+	err := run(context.Background(), newTestGCPProvider(fakeKMS), githubServer.Client(), strings.NewReader("n\n"), &stdout, runConfig{
 		GitHubBaseURL: githubServer.URL,
 		PEMFile:       "testdata/pkcs1.pem",
 		AppID:         &appID,
@@ -75,13 +77,58 @@ func TestRun_GCPImportsAndVerifies(t *testing.T) {
 	if !bytes.Equal(fakeKMS.importedDER(t), wantDER) {
 		t.Fatal("imported key material does not match PEM converted to PKCS#8 DER")
 	}
-	fakeKMS.assertCalls(t, 1, 1, 1)
+	fakeKMS.assertCalls(t, 1, 1, 1, 1)
 
 	output := stdout.String()
-	for _, want := range []string{"KMS import complete", "Authentication successful", "Done"} {
+	for _, want := range []string{"KMS import complete: " + testGCPKeyVersionName, "Authentication successful", "Done"} {
 		if !strings.Contains(output, want) {
 			t.Errorf("expected %q in output, got: %s", want, output)
 		}
+	}
+}
+
+func TestGCPSigner_SignatureCrcMismatch(t *testing.T) {
+	fakeKMS := newFakeGCPKMSClient(t)
+	fakeKMS.corruptSignatureCrc = true
+	signer := newTestGCPSigner(t, fakeKMS)
+
+	digest := sha256.Sum256([]byte("payload"))
+	_, err := signer.SignDigest(context.Background(), digest[:])
+	if err == nil {
+		t.Fatal("expected signature CRC mismatch error, got nil")
+	}
+	if !strings.Contains(err.Error(), "signature checksum mismatch") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGCPSigner_UnverifiedDigest(t *testing.T) {
+	fakeKMS := newFakeGCPKMSClient(t)
+	fakeKMS.unverifiedDigest = true
+	signer := newTestGCPSigner(t, fakeKMS)
+
+	digest := sha256.Sum256([]byte("payload"))
+	_, err := signer.SignDigest(context.Background(), digest[:])
+	if err == nil {
+		t.Fatal("expected unverified digest error, got nil")
+	}
+	if !strings.Contains(err.Error(), "was not verified") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGCPSigner_ResponseNameMismatch(t *testing.T) {
+	fakeKMS := newFakeGCPKMSClient(t)
+	fakeKMS.signResponseName = "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/999"
+	signer := newTestGCPSigner(t, fakeKMS)
+
+	digest := sha256.Sum256([]byte("payload"))
+	_, err := signer.SignDigest(context.Background(), digest[:])
+	if err == nil {
+		t.Fatal("expected response name mismatch error, got nil")
+	}
+	if !strings.Contains(err.Error(), "response is for") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -89,7 +136,7 @@ func TestGCPProvider_UnsupportedImportMethod(t *testing.T) {
 	fakeKMS := newFakeGCPKMSClient(t)
 	fakeKMS.importMethod = kmspb.ImportJob_RSA_OAEP_4096_SHA1_AES_256
 
-	_, err := newGCPProvider(fakeKMS, testGCPKeyName, testGCPImportJobName).WrappingPublicKeyDER(context.Background())
+	_, err := newTestGCPProvider(fakeKMS).WrappingPublicKeyDER(context.Background())
 	if err == nil {
 		t.Fatal("expected unsupported import method error, got nil")
 	}
@@ -98,11 +145,24 @@ func TestGCPProvider_UnsupportedImportMethod(t *testing.T) {
 	}
 }
 
+func TestGCPProvider_InactiveImportJob(t *testing.T) {
+	fakeKMS := newFakeGCPKMSClient(t)
+	fakeKMS.jobState = kmspb.ImportJob_EXPIRED
+
+	_, err := newTestGCPProvider(fakeKMS).WrappingPublicKeyDER(context.Background())
+	if err == nil {
+		t.Fatal("expected inactive import job error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not active") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRun_GCPDryRunSkipsImport(t *testing.T) {
 	fakeKMS := newFakeGCPKMSClient(t)
 
 	var stdout bytes.Buffer
-	err := run(context.Background(), newGCPProvider(fakeKMS, testGCPKeyName, testGCPImportJobName), http.DefaultClient, strings.NewReader(""), &stdout, runConfig{
+	err := run(context.Background(), newTestGCPProvider(fakeKMS), http.DefaultClient, strings.NewReader(""), &stdout, runConfig{
 		GitHubBaseURL: "https://api.github.com",
 		PEMFile:       "testdata/pkcs1.pem",
 		DryRun:        true,
@@ -110,7 +170,7 @@ func TestRun_GCPDryRunSkipsImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fakeKMS.assertCalls(t, 1, 0, 0)
+	fakeKMS.assertCalls(t, 1, 0, 0, 0)
 	output := stdout.String()
 	if !strings.Contains(output, "Dry run complete") {
 		t.Errorf("expected dry-run message in output, got: %s", output)
@@ -120,17 +180,83 @@ func TestRun_GCPDryRunSkipsImport(t *testing.T) {
 	}
 }
 
+func TestGCPProvider_WaitsForImportToComplete(t *testing.T) {
+	fakeKMS := newFakeGCPKMSClient(t)
+	fakeKMS.pendingPolls = 2
+
+	var stdout bytes.Buffer
+	err := run(context.Background(), newTestGCPProvider(fakeKMS), http.DefaultClient, strings.NewReader("n\n"), &stdout, runConfig{
+		GitHubBaseURL: "https://api.github.com",
+		PEMFile:       "testdata/pkcs1.pem",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	fakeKMS.assertCalls(t, 1, 1, 3, 0)
+	output := stdout.String()
+	if !strings.Contains(output, "KMS import complete: "+testGCPKeyVersionName) {
+		t.Errorf("expected imported version name in output, got: %s", output)
+	}
+}
+
+func TestGCPProvider_ImportFailed(t *testing.T) {
+	fakeKMS := newFakeGCPKMSClient(t)
+	fakeKMS.importFailedReason = "wrapped key material rejected"
+
+	var stdout bytes.Buffer
+	err := run(context.Background(), newTestGCPProvider(fakeKMS), http.DefaultClient, strings.NewReader(""), &stdout, runConfig{
+		GitHubBaseURL: "https://api.github.com",
+		PEMFile:       "testdata/pkcs1.pem",
+	})
+	if err == nil {
+		t.Fatal("expected import failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "GCP key import failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	fakeKMS.assertCalls(t, 1, 1, 1, 0)
+}
+
+func TestGCPProvider_ImportTimeout(t *testing.T) {
+	fakeKMS := newFakeGCPKMSClient(t)
+	fakeKMS.pendingPolls = 1 << 30
+	provider := newTestGCPProvider(fakeKMS)
+	provider.pollInterval = time.Millisecond
+	provider.pollMaxWait = 3 * time.Millisecond
+
+	var stdout bytes.Buffer
+	err := run(context.Background(), provider, http.DefaultClient, strings.NewReader(""), &stdout, runConfig{
+		GitHubBaseURL: "https://api.github.com",
+		PEMFile:       "testdata/pkcs1.pem",
+	})
+	if err == nil {
+		t.Fatal("expected timeout, got nil")
+	}
+	if !strings.Contains(err.Error(), "timed out waiting") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	fakeKMS.assertCalls(t, 1, 1, 3, 0)
+}
+
 type fakeGCPKMSClient struct {
 	t            *testing.T
 	wrappingKey  *rsa.PrivateKey
 	importMethod kmspb.ImportJob_ImportMethod
+	jobState     kmspb.ImportJob_ImportJobState
 
-	mu          sync.Mutex
-	importedKey *rsa.PrivateKey
-	importedRaw []byte
-	getCalls    int
-	importCalls int
-	signCalls   int
+	mu              sync.Mutex
+	importedKey     *rsa.PrivateKey
+	importedRaw     []byte
+	getCalls        int
+	importCalls     int
+	getVersionCalls int
+	signCalls       int
+
+	pendingPolls        int
+	importFailedReason  string
+	corruptSignatureCrc bool
+	unverifiedDigest    bool
+	signResponseName    string
 }
 
 func newFakeGCPKMSClient(t *testing.T) *fakeGCPKMSClient {
@@ -143,7 +269,23 @@ func newFakeGCPKMSClient(t *testing.T) *fakeGCPKMSClient {
 		t:            t,
 		wrappingKey:  wrappingKey,
 		importMethod: kmspb.ImportJob_RSA_OAEP_4096_SHA256_AES_256,
+		jobState:     kmspb.ImportJob_ACTIVE,
 	}
+}
+
+func newTestGCPProvider(client GCPKMSClient) *gcpProvider {
+	p := newGCPProvider(client, testGCPKeyName, testGCPImportJobName)
+	p.pollInterval = time.Millisecond
+	p.pollMaxWait = time.Second
+	return p
+}
+
+func newTestGCPSigner(t *testing.T, client *fakeGCPKMSClient) *gcpSigner {
+	t.Helper()
+	client.mu.Lock()
+	client.importedKey = client.wrappingKey
+	client.mu.Unlock()
+	return &gcpSigner{client: client, keyVersionName: testGCPKeyVersionName}
 }
 
 func (f *fakeGCPKMSClient) GetImportJob(_ context.Context, req *kmspb.GetImportJobRequest, _ ...gax.CallOption) (*kmspb.ImportJob, error) {
@@ -163,7 +305,7 @@ func (f *fakeGCPKMSClient) GetImportJob(_ context.Context, req *kmspb.GetImportJ
 	return &kmspb.ImportJob{
 		Name:         req.GetName(),
 		ImportMethod: f.importMethod,
-		State:        kmspb.ImportJob_ACTIVE,
+		State:        f.jobState,
 		PublicKey:    &kmspb.ImportJob_WrappingPublicKey{Pem: string(pubPEM)},
 	}, nil
 }
@@ -205,7 +347,27 @@ func (f *fakeGCPKMSClient) ImportCryptoKeyVersion(_ context.Context, req *kmspb.
 	f.importedRaw = bytes.Clone(keyDER)
 	f.mu.Unlock()
 
-	return &kmspb.CryptoKeyVersion{Name: testGCPKeyVersionName}, nil
+	return &kmspb.CryptoKeyVersion{Name: testGCPKeyVersionName, State: kmspb.CryptoKeyVersion_PENDING_IMPORT}, nil
+}
+
+func (f *fakeGCPKMSClient) GetCryptoKeyVersion(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+	if req.GetName() != testGCPKeyVersionName {
+		f.t.Errorf("unexpected key version name: %s", req.GetName())
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getVersionCalls++
+	if f.importFailedReason != "" {
+		return &kmspb.CryptoKeyVersion{
+			Name:                testGCPKeyVersionName,
+			State:               kmspb.CryptoKeyVersion_IMPORT_FAILED,
+			ImportFailureReason: f.importFailedReason,
+		}, nil
+	}
+	if f.getVersionCalls <= f.pendingPolls {
+		return &kmspb.CryptoKeyVersion{Name: testGCPKeyVersionName, State: kmspb.CryptoKeyVersion_PENDING_IMPORT}, nil
+	}
+	return &kmspb.CryptoKeyVersion{Name: testGCPKeyVersionName, State: kmspb.CryptoKeyVersion_ENABLED}, nil
 }
 
 func (f *fakeGCPKMSClient) AsymmetricSign(_ context.Context, req *kmspb.AsymmetricSignRequest, _ ...gax.CallOption) (*kmspb.AsymmetricSignResponse, error) {
@@ -216,9 +378,17 @@ func (f *fakeGCPKMSClient) AsymmetricSign(_ context.Context, req *kmspb.Asymmetr
 	if len(digest) != sha256.Size {
 		f.t.Fatalf("unexpected SHA-256 digest length: %d", len(digest))
 	}
+	if req.GetDigestCrc32C() == nil {
+		f.t.Errorf("missing digest CRC32C")
+	} else if got, want := req.GetDigestCrc32C().GetValue(), crc32c(digest); got != want {
+		f.t.Errorf("unexpected digest CRC32C: %d, want %d", got, want)
+	}
 
 	f.mu.Lock()
 	key := f.importedKey
+	corruptSignatureCrc := f.corruptSignatureCrc
+	unverifiedDigest := f.unverifiedDigest
+	signResponseName := f.signResponseName
 	f.signCalls++
 	f.mu.Unlock()
 	if key == nil {
@@ -228,7 +398,20 @@ func (f *fakeGCPKMSClient) AsymmetricSign(_ context.Context, req *kmspb.Asymmetr
 	if err != nil {
 		f.t.Fatalf("failed to sign digest: %v", err)
 	}
-	return &kmspb.AsymmetricSignResponse{Name: req.GetName(), Signature: sig}, nil
+	signatureCRC := crc32c(sig)
+	if corruptSignatureCrc {
+		signatureCRC++
+	}
+	name := req.GetName()
+	if signResponseName != "" {
+		name = signResponseName
+	}
+	return &kmspb.AsymmetricSignResponse{
+		Name:                 name,
+		Signature:            sig,
+		SignatureCrc32C:      wrapperspb.Int64(signatureCRC),
+		VerifiedDigestCrc32C: !unverifiedDigest,
+	}, nil
 }
 
 func (f *fakeGCPKMSClient) decryptImportedKeyMaterial(encrypted []byte) ([]byte, error) {
@@ -267,11 +450,11 @@ func (f *fakeGCPKMSClient) importedPublicKey(t *testing.T) *rsa.PublicKey {
 	return &f.importedKey.PublicKey
 }
 
-func (f *fakeGCPKMSClient) assertCalls(t *testing.T, get, importKey, sign int) {
+func (f *fakeGCPKMSClient) assertCalls(t *testing.T, get, importKey, getVersion, sign int) {
 	t.Helper()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.getCalls != get || f.importCalls != importKey || f.signCalls != sign {
-		t.Fatalf("unexpected GCP KMS calls: get=%d import=%d sign=%d", f.getCalls, f.importCalls, f.signCalls)
+	if f.getCalls != get || f.importCalls != importKey || f.getVersionCalls != getVersion || f.signCalls != sign {
+		t.Fatalf("unexpected GCP KMS calls: get=%d import=%d getVersion=%d sign=%d", f.getCalls, f.importCalls, f.getVersionCalls, f.signCalls)
 	}
 }

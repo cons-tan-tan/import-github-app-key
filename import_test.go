@@ -113,8 +113,8 @@ func TestRun_Success(t *testing.T) {
 	}
 
 	output := stdout.String()
-	if !strings.Contains(output, "KMS import complete") {
-		t.Errorf("expected 'KMS import complete' in output, got: %s", output)
+	if !strings.Contains(output, "KMS import complete: test-key-id") {
+		t.Errorf("expected 'KMS import complete: test-key-id' in output, got: %s", output)
 	}
 	if !strings.Contains(output, "Done") {
 		t.Errorf("expected 'Done' in output, got: %s", output)

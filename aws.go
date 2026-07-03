@@ -44,9 +44,9 @@ func (p *awsProvider) WrappingPublicKeyDER(ctx context.Context) ([]byte, error) 
 	return params.PublicKey, nil
 }
 
-func (p *awsProvider) ImportKeyMaterial(ctx context.Context, encrypted []byte) (digestSigner, error) {
+func (p *awsProvider) ImportKeyMaterial(ctx context.Context, encrypted []byte) (digestSigner, string, error) {
 	if len(p.importToken) == 0 {
-		return nil, fmt.Errorf("AWS import token is missing; fetch wrapping parameters first")
+		return nil, "", fmt.Errorf("AWS import token is missing; fetch wrapping parameters first")
 	}
 	_, err := p.client.ImportKeyMaterial(ctx, &kms.ImportKeyMaterialInput{
 		KeyId:                &p.keyID,
@@ -55,9 +55,9 @@ func (p *awsProvider) ImportKeyMaterial(ctx context.Context, encrypted []byte) (
 		ExpirationModel:      types.ExpirationModelTypeKeyMaterialDoesNotExpire,
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return &awsSigner{client: p.client, keyID: p.keyID}, nil
+	return &awsSigner{client: p.client, keyID: p.keyID}, p.keyID, nil
 }
 
 type awsSigner struct {
