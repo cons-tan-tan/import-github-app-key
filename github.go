@@ -19,7 +19,7 @@ func validateWithGitHub(ctx context.Context, signer digestSigner, httpClient *ht
 	header := `{"alg":"RS256","typ":"JWT"}`
 	payload := fmt.Sprintf(`{"iat":%d,"exp":%d,"iss":%d}`, now-60, now+480, appID)
 
-	signingInput := base64URLEncode([]byte(header)) + "." + base64URLEncode([]byte(payload))
+	signingInput := base64.RawURLEncoding.EncodeToString([]byte(header)) + "." + base64.RawURLEncoding.EncodeToString([]byte(payload))
 
 	digest := sha256.Sum256([]byte(signingInput))
 	signature, err := signer.SignDigest(ctx, digest[:])
@@ -27,7 +27,7 @@ func validateWithGitHub(ctx context.Context, signer digestSigner, httpClient *ht
 		return fmt.Errorf("KMS signing failed: %w", err)
 	}
 
-	jwt := signingInput + "." + base64URLEncode(signature)
+	jwt := signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubBaseURL, "/")+"/app", nil)
 	if err != nil {
@@ -64,8 +64,4 @@ func validateWithGitHub(ctx context.Context, signer digestSigner, httpClient *ht
 
 	fmt.Fprintf(stdout, "Authentication successful: %s (ID: %d)\n", result.Name, result.ID)
 	return nil
-}
-
-func base64URLEncode(data []byte) string {
-	return base64.RawURLEncoding.EncodeToString(data)
 }

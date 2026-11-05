@@ -147,26 +147,3 @@ func TestValidateWithGitHub_InvalidJSON(t *testing.T) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
-
-func TestBase64URLEncode(t *testing.T) {
-	tests := []struct {
-		input    []byte
-		expected string
-	}{
-		{[]byte("hello"), "aGVsbG8"},
-		{[]byte{0xff, 0xfe}, "__4"}, // URL-safe: _ instead of /
-		{[]byte{0xfb, 0xef}, "--8"}, // URL-safe: - instead of +
-		{[]byte{0, 0, 0}, "AAAA"},   // No padding
-		{[]byte(`{"alg":"RS256"}`), "eyJhbGciOiJSUzI1NiJ9"},
-	}
-	for _, tt := range tests {
-		got := base64URLEncode(tt.input)
-		if got != tt.expected {
-			t.Errorf("base64URLEncode(%v) = %q, want %q", tt.input, got, tt.expected)
-		}
-		// Verify no padding characters.
-		if strings.Contains(got, "=") {
-			t.Errorf("base64URLEncode(%v) contains padding: %q", tt.input, got)
-		}
-	}
-}
