@@ -36,11 +36,7 @@ func run(ctx context.Context, provider keyImportProvider, httpClient *http.Clien
 	if err != nil {
 		return fmt.Errorf("PEM conversion failed: %w", err)
 	}
-	defer func() {
-		for i := range privateKeyDER {
-			privateKeyDER[i] = 0
-		}
-	}()
+	defer clear(privateKeyDER)
 	fmt.Fprintln(stdout, "PEM -> PKCS#8 DER conversion complete")
 
 	// Step 2: Fetch KMS wrapping parameters
@@ -103,11 +99,7 @@ func run(ctx context.Context, provider keyImportProvider, httpClient *http.Clien
 //  4. Return the concatenation: encrypted AES key || wrapped private key
 func encryptKeyMaterial(privateKeyDER, wrappingPublicKeyDER []byte) ([]byte, error) {
 	aesKey := make([]byte, 32)
-	defer func() {
-		for i := range aesKey {
-			aesKey[i] = 0
-		}
-	}()
+	defer clear(aesKey)
 	if _, err := rand.Read(aesKey); err != nil {
 		return nil, fmt.Errorf("failed to generate AES key: %w", err)
 	}
@@ -131,8 +123,5 @@ func encryptKeyMaterial(privateKeyDER, wrappingPublicKeyDER []byte) ([]byte, err
 		return nil, fmt.Errorf("RSA-OAEP encryption failed: %w", err)
 	}
 
-	result := make([]byte, 0, len(encryptedAESKey)+len(wrappedKey))
-	result = append(result, encryptedAESKey...)
-	result = append(result, wrappedKey...)
-	return result, nil
+	return append(encryptedAESKey, wrappedKey...), nil
 }

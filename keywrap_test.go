@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"testing"
 )
 
@@ -50,33 +51,30 @@ func TestAESKeyWrapWithPadding_RFC5649_Vector2(t *testing.T) {
 	}
 }
 
-func TestAESKeyWrapWithPadding_SingleBlock(t *testing.T) {
-	// 8 bytes of plaintext triggers the single-block (n==1) path.
-	kek := make([]byte, 16) // AES-128 zero key
-	plaintext := []byte("12345678")
+func TestAESKeyWrapWithPadding_RoundTrip(t *testing.T) {
+	for _, keySize := range []int{16, 24, 32} {
+		for _, size := range []int{1, 8, 9, 16, 17, 1217} {
+			t.Run(fmt.Sprintf("key=%d/plaintext=%d", keySize, size), func(t *testing.T) {
+				kek := bytes.Repeat([]byte{0x42}, keySize)
+				plaintext := bytes.Repeat([]byte{0xAB}, size)
+				original := bytes.Clone(plaintext)
 
-	result, err := aesKeyWrapWithPadding(kek, plaintext)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// Single block output is always 16 bytes (AIV + 1 block encrypted together).
-	if len(result) != 16 {
-		t.Errorf("expected 16 bytes, got %d", len(result))
-	}
-}
-
-func TestAESKeyWrapWithPadding_MultiBlock_NoPadding(t *testing.T) {
-	// 16 bytes of plaintext = exactly 2 blocks, no padding needed.
-	kek := make([]byte, 32) // AES-256 zero key
-	plaintext := []byte("0123456789ABCDEF")
-
-	result, err := aesKeyWrapWithPadding(kek, plaintext)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// Output: 8 (A) + 16 (2 blocks) = 24 bytes.
-	if len(result) != 24 {
-		t.Errorf("expected 24 bytes, got %d", len(result))
+				wrapped, err := aesKeyWrapWithPadding(kek, plaintext)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(plaintext, original) {
+					t.Fatal("wrapping modified the input plaintext")
+				}
+				unwrapped, err := aesKeyUnwrapWithPadding(kek, wrapped)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(unwrapped, original) {
+					t.Fatal("unwrapped key does not match the input plaintext")
+				}
+			})
+		}
 	}
 }
 

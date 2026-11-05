@@ -15,21 +15,13 @@ func pemToPKCS8DER(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
-	defer func() {
-		for i := range data {
-			data[i] = 0
-		}
-	}()
+	defer clear(data)
 
 	block, _ := pem.Decode(data)
 	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM")
 	}
-	defer func() {
-		for i := range block.Bytes {
-			block.Bytes[i] = 0
-		}
-	}()
+	defer clear(block.Bytes)
 
 	var key any
 	switch block.Type {
