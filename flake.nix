@@ -2,8 +2,8 @@
   description = "Import GitHub App private keys into a cloud KMS";
 
   inputs = {
-    go1264-src = {
-      url = "https://go.dev/dl/go1.26.4.src.tar.gz";
+    go12610-src = {
+      url = "https://go.dev/dl/go1.26.10.src.tar.gz";
       flake = false;
     };
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -13,7 +13,7 @@
   outputs =
     {
       self,
-      go1264-src,
+      go12610-src,
       nixpkgs,
       treefmt-nix,
     }:
@@ -26,11 +26,11 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       version = "0-unstable-${self.shortRev or self.dirtyShortRev or "unknown"}";
-      go1264For =
+      go12610For =
         pkgs:
         pkgs.go_1_26.overrideAttrs {
-          version = "1.26.4";
-          src = go1264-src;
+          version = "1.26.10";
+          src = go12610-src;
         };
       treefmtEval = forAllSystems (
         system:
@@ -52,11 +52,11 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
-          default = (pkgs.buildGoModule.override { go = go1264For pkgs; }) {
+          default = (pkgs.buildGoModule.override { go = go12610For pkgs; }) {
             pname = "import-github-app-key";
             inherit version;
             src = ./.;
-            vendorHash = "sha256-vBll6QYZZ4NZs/c9wtdX7H/vLxFWP16rM8dtn0sm85Q=";
+            vendorHash = "sha256-ZmMCUHmvz1P2njXhUh4gTaIzeET1GOLhsSS8pVR9qJc=";
             ldflags = [
               "-s"
               "-w"
@@ -85,12 +85,12 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          go1264 = go1264For pkgs;
+          go12610 = go12610For pkgs;
         in
         {
           default = pkgs.mkShell {
             packages = with pkgs; [
-              go1264
+              go12610
               gopls
               goreleaser
               go-tools # staticcheck

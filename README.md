@@ -8,7 +8,7 @@ Once imported, signing operations (e.g. JWT for GitHub API authentication) are p
 
 For direct Go usage (`go run ...@latest`):
 
-- Go 1.26.4 or newer
+- Go 1.26.10 or newer
 
 For AWS KMS (the default provider):
 
@@ -28,7 +28,7 @@ For Google Cloud KMS:
 
 ## Quick run
 
-Direct Go usage requires Go 1.26.4 or newer:
+Direct Go usage requires Go 1.26.10 or newer:
 
 ```sh
 go run github.com/cons-tan-tan/import-github-app-key@latest --help

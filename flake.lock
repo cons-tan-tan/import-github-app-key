@@ -1,16 +1,16 @@
 {
   "nodes": {
-    "go1264-src": {
+    "go12610-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1780068399,
-        "narHash": "sha256-R16Z1k4oBCRWy5MKnOILcQtXhlCpSxdNsQMaLFRML0U=",
+        "lastModified": 1792448436,
+        "narHash": "sha256-0EmPD6X0Ku00TS5l3r4uUHv0LDuFNqng+/zfZwfcCDc=",
         "type": "tarball",
-        "url": "https://go.dev/dl/go1.26.4.src.tar.gz"
+        "url": "https://go.dev/dl/go1.26.10.src.tar.gz"
       },
       "original": {
         "type": "tarball",
-        "url": "https://go.dev/dl/go1.26.4.src.tar.gz"
+        "url": "https://go.dev/dl/go1.26.10.src.tar.gz"
       }
     },
     "nixpkgs": {
@@ -47,7 +47,7 @@
     },
     "root": {
       "inputs": {
-        "go1264-src": "go1264-src",
+        "go12610-src": "go12610-src",
         "nixpkgs": "nixpkgs",
         "treefmt-nix": "treefmt-nix"
       }
