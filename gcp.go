@@ -88,7 +88,8 @@ func (p *gcpProvider) ImportKeyMaterial(ctx context.Context, encrypted []byte) (
 // ENABLED. ImportCryptoKeyVersion is asynchronous: the version starts in
 // PENDING_IMPORT and cannot sign until the import completes.
 func (p *gcpProvider) waitForEnabled(ctx context.Context, version *kmspb.CryptoKeyVersion) (*kmspb.CryptoKeyVersion, error) {
-	var waited time.Duration
+	ctx, cancel := context.WithTimeout(ctx, p.pollMaxWait)
+	defer cancel()
 	for {
 		switch version.GetState() {
 		case kmspb.CryptoKeyVersion_ENABLED:
@@ -100,14 +101,10 @@ func (p *gcpProvider) waitForEnabled(ctx context.Context, version *kmspb.CryptoK
 		default:
 			return nil, fmt.Errorf("unexpected CryptoKeyVersion state after import: %s", version.GetState())
 		}
-		if waited >= p.pollMaxWait {
-			return nil, fmt.Errorf("timed out waiting for %s to become ENABLED (last state: %s)", version.GetName(), version.GetState())
-		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("waiting for %s to become ENABLED (last state: %s): %w", version.GetName(), version.GetState(), ctx.Err())
 		case <-time.After(p.pollInterval):
-			waited += p.pollInterval
 		}
 		refreshed, err := p.client.GetCryptoKeyVersion(ctx, &kmspb.GetCryptoKeyVersionRequest{Name: version.GetName()})
 		if err != nil {

@@ -11,12 +11,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
@@ -218,24 +220,30 @@ func TestGCPProvider_ImportFailed(t *testing.T) {
 }
 
 func TestGCPProvider_ImportTimeout(t *testing.T) {
-	fakeKMS := newFakeGCPKMSClient(t)
-	fakeKMS.pendingPolls = 1 << 30
-	provider := newTestGCPProvider(fakeKMS)
-	provider.pollInterval = time.Millisecond
-	provider.pollMaxWait = 3 * time.Millisecond
-
-	var stdout bytes.Buffer
-	err := run(context.Background(), provider, http.DefaultClient, strings.NewReader(""), &stdout, runConfig{
-		GitHubBaseURL: "https://api.github.com",
-		PEMFile:       "testdata/pkcs1.pem",
-	})
-	if err == nil {
-		t.Fatal("expected timeout, got nil")
+	for _, delay := range []time.Duration{0, time.Second, 10 * time.Second} {
+		t.Run(delay.String(), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				fakeKMS := &fakeGCPKMSClient{
+					t:               t,
+					pendingPolls:    1 << 30,
+					getVersionDelay: delay,
+				}
+				provider := newGCPProvider(fakeKMS, testGCPKeyName, testGCPImportJobName)
+				provider.pollMaxWait = 5 * time.Second
+				start := time.Now()
+				_, err := provider.waitForEnabled(t.Context(), &kmspb.CryptoKeyVersion{
+					Name:  testGCPKeyVersionName,
+					State: kmspb.CryptoKeyVersion_PENDING_IMPORT,
+				})
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Errorf("expected deadline exceeded, got: %v", err)
+				}
+				if elapsed := time.Since(start); elapsed != provider.pollMaxWait {
+					t.Fatalf("waited %v, want %v including API calls", elapsed, provider.pollMaxWait)
+				}
+			})
+		})
 	}
-	if !strings.Contains(err.Error(), "timed out waiting") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	fakeKMS.assertCalls(t, 1, 1, 3, 0)
 }
 
 type fakeGCPKMSClient struct {
@@ -253,6 +261,7 @@ type fakeGCPKMSClient struct {
 	signCalls       int
 
 	pendingPolls        int
+	getVersionDelay     time.Duration
 	importFailedReason  string
 	corruptSignatureCrc bool
 	unverifiedDigest    bool
@@ -350,7 +359,12 @@ func (f *fakeGCPKMSClient) ImportCryptoKeyVersion(_ context.Context, req *kmspb.
 	return &kmspb.CryptoKeyVersion{Name: testGCPKeyVersionName, State: kmspb.CryptoKeyVersion_PENDING_IMPORT}, nil
 }
 
-func (f *fakeGCPKMSClient) GetCryptoKeyVersion(_ context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+func (f *fakeGCPKMSClient) GetCryptoKeyVersion(ctx context.Context, req *kmspb.GetCryptoKeyVersionRequest, _ ...gax.CallOption) (*kmspb.CryptoKeyVersion, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(f.getVersionDelay):
+	}
 	if req.GetName() != testGCPKeyVersionName {
 		f.t.Errorf("unexpected key version name: %s", req.GetName())
 	}
