@@ -1,0 +1,16 @@
+name: Set up Nix and Hestia
+description: Install Nix and start the pinned Hestia cache daemon
+
+runs:
+  using: composite
+  steps:
+    - name: Install Nix
+      uses: nixbuild/nix-quick-install-action@9f63be77f412a248c9d9a65a4c82cf066cdf8f0c # v35
+      with:
+        enable_kvm: false
+    - name: Start Hestia
+      uses: Mic92/hestia@dfed9ced335d28978ba74e513939a10db1f71025 # v3.1.0
+      with:
+        version: v3.1.0
+        upstream-cache-filter: true
+        upstream-cache-key-names: cache.nixos.org-1

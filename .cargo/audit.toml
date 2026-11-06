@@ -1,0 +1,8 @@
+[advisories]
+# RUSTSEC-2023-0071 concerns observable private RSA operations. Production uses
+# rsa only to validate local PEM material and encrypt with the KMS public key;
+# private-key signing and decryption happen in KMS. Local signing/decryption in
+# tests use throwaway fixtures. Revisit this exception before adding any local
+# private-key operation or exposing parsing as a network service.
+# https://rustsec.org/advisories/RUSTSEC-2023-0071.html
+ignore = ["RUSTSEC-2023-0071"]

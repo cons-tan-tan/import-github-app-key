@@ -1,146 +1,102 @@
 # import-github-app-key
 
-A CLI tool that imports GitHub App RSA private keys into AWS KMS or Google Cloud KMS.
+Import GitHub App RSA private keys into AWS KMS or Google Cloud KMS so subsequent
+JWT signing can run in KMS without loading the private key into your application.
 
-Once imported, signing operations (e.g. JWT for GitHub API authentication) are performed within KMS, eliminating the need to store private keys on disk or in application memory.
+## Install and run
 
-## Prerequisites
-
-For direct Go usage (`go run ...@latest`):
-
-- Go 1.26.10 or newer
-
-For AWS KMS (the default provider):
-
-- AWS credentials configured (environment variables, `~/.aws/credentials`, etc.)
-- A KMS key created in advance with:
-  - KeySpec: `RSA_2048`
-  - KeyUsage: `SIGN_VERIFY`
-  - Origin: `EXTERNAL`
-
-For Google Cloud KMS:
-
-- Google Cloud credentials configured for Application Default Credentials
-- A Cloud KMS CryptoKey created for asymmetric signing
-- An active ImportJob created with one of these import methods:
-  - `RSA_OAEP_3072_SHA256_AES_256`
-  - `RSA_OAEP_4096_SHA256_AES_256`
-
-## Quick run
-
-Direct Go usage requires Go 1.26.10 or newer:
+From a checkout, use the Rust toolchain in [rust-toolchain.toml](rust-toolchain.toml)
+and a C/C++ compiler for the SDKs' TLS implementation (Clang/LLVM on Windows ARM64):
 
 ```sh
-go run github.com/cons-tan-tan/import-github-app-key@latest --help
+cargo install --locked --path .
+import-github-app-key --help
 ```
 
-Nix flakes are also supported:
+On Linux or Apple Silicon macOS, Nix can run it without installation:
 
 ```sh
 nix run github:cons-tan-tan/import-github-app-key -- --help
 ```
 
+Release builds target Linux, macOS, and Windows on x86-64 and ARM64, with SHA-256
+checksums. Linux binaries require glibc 2.35 or newer; Mac binaries target macOS 11
+or newer. Published versions appear on
+[GitHub Releases](https://github.com/cons-tan-tan/import-github-app-key/releases).
+Release assets and tags are immutable after publication; use
+[`gh release verify-asset`](https://cli.github.com/manual/gh_release_verify-asset)
+to verify downloaded files.
+
+## Prerequisites
+
+The input must be an unencrypted RSA-2048 private key in PKCS#1 or PKCS#8 PEM format.
+
+For AWS KMS (the default provider):
+
+- Configure AWS credentials and a region through your AWS profile or environment
+  variables (such as `AWS_REGION`).
+- Create a KMS key with `KeySpec: RSA_2048`, `KeyUsage: SIGN_VERIFY`, and
+  `Origin: EXTERNAL`.
+
+For Google Cloud KMS:
+
+- Configure Application Default Credentials.
+- Create a CryptoKey for asymmetric signing and an active ImportJob using
+  `RSA_OAEP_3072_SHA256_AES_256` or `RSA_OAEP_4096_SHA256_AES_256`.
+
 ## Usage
 
-With Go:
+```text
+import-github-app-key [OPTIONS] <KEY_ID> <PEM_FILE>
+```
+
+For AWS, pass the KMS key ID or ARN. Use `--verify` with your GitHub App ID to
+check the imported key by signing a JWT in KMS and calling the GitHub API:
 
 ```sh
-go run github.com/cons-tan-tan/import-github-app-key@latest [flags] <key-id> <pem-file>
+import-github-app-key --verify 12345 \
+  arn:aws:kms:ap-northeast-1:123456789012:key/your-key-id ./private-key.pem
 ```
 
-With Nix:
+For GCP, pass the CryptoKey resource name and its ImportJob:
 
 ```sh
-nix run github:cons-tan-tan/import-github-app-key -- [flags] <key-id> <pem-file>
-```
-
-The examples below use `import-github-app-key` as the command name shown in help output. For one-shot use, replace it with either runner above.
-
-```
-import-github-app-key [flags] <key-id> <pem-file>
-```
-
-### Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `key-id` | AWS KMS key ID/ARN, or GCP CryptoKey resource name |
-| `pem-file` | Path to the GitHub App private key PEM file |
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `-V, --version` | Print version and exit |
-| `--provider <aws\|gcp>` | KMS provider (default: `aws`) |
-| `-v, --verify <app-id>` | GitHub App ID. Validates the imported key by signing a JWT and calling the GitHub API |
-| `-d, --delete` | Delete the PEM file after a successful import without prompting |
-| `--dry-run` | Validate the PEM file and KMS wrapping parameters without importing |
-| `--github-url <url>` | GitHub API base URL (default: `https://api.github.com`). Set this for GitHub Enterprise Server |
-| `--gcp-import-job <name>` | GCP ImportJob resource name. Required when `--provider=gcp` |
-
-### Examples
-
-```sh
-# AWS basic import (prompts for PEM deletion after completion)
-import-github-app-key arn:aws:kms:ap-northeast-1:123456789012:key/mrk-xxx ./private-key.pem
-
-# AWS verify with GitHub API and auto-delete PEM (for CI/CD)
-import-github-app-key -v 12345 -d arn:aws:kms:ap-northeast-1:123456789012:key/mrk-xxx ./private-key.pem
-
-# AWS dry run (validate PEM and KMS wrapping parameters only)
-import-github-app-key --dry-run arn:aws:kms:ap-northeast-1:123456789012:key/mrk-xxx ./private-key.pem
-
-# GCP import with an active ImportJob
-import-github-app-key \
-  --provider gcp \
+import-github-app-key --provider gcp --verify 12345 \
   --gcp-import-job projects/my-project/locations/global/keyRings/my-ring/importJobs/my-import-job \
   projects/my-project/locations/global/keyRings/my-ring/cryptoKeys/my-key \
   ./private-key.pem
-
-# GCP dry run
-import-github-app-key \
-  --provider gcp \
-  --gcp-import-job projects/my-project/locations/global/keyRings/my-ring/importJobs/my-import-job \
-  --dry-run \
-  projects/my-project/locations/global/keyRings/my-ring/cryptoKeys/my-key \
-  ./private-key.pem
-
-# GitHub Enterprise Server
-import-github-app-key -v 12345 --github-url https://github.example.com/api/v3 arn:aws:kms:ap-northeast-1:123456789012:key/mrk-xxx ./private-key.pem
 ```
+
+For GitHub Enterprise Server, add `--github-url https://github.example.com/api/v3`.
+Verification requires an HTTPS URL without embedded credentials, a query, or a fragment.
+
+Use `--dry-run` to validate the PEM and wrapping parameters without importing or
+deleting anything. It still contacts KMS and requires credentials; it cannot be
+combined with `--verify` or `--delete`. Run `--help` for the full option reference.
+
+## Key handling and deletion
+
+After a successful import, the CLI prompts before deleting the PEM. `--delete`
+skips the prompt. If `--verify` is supplied, verification must also succeed before
+deletion. Failed import or verification leaves the PEM in place, and deletion is
+refused if its contents have changed since encryption.
+
+Application-owned plaintext buffers are cleared on drop, including error paths,
+and released before network requests or prompts. Complete memory erasure is not
+guaranteed: dependencies can leave internal temporary allocations, and compiler
+copies, CPU registers, swap, hibernation images, and core dumps are not covered.
+
+File deletion is not secure erasure of storage. The content check and deletion
+are not atomic; keep the PEM in a directory that other processes cannot modify
+while the import is running.
 
 ## Development
 
-```sh
-# Enter the dev shell
-nix develop
+Use `nix develop` for the development tools. Check commands and contribution rules
+are in [AGENTS.md](AGENTS.md); the executable CI definitions are in
+[check.yaml](.github/workflows/check.yaml).
 
-# Run tests
-go test -race ./...
-
-# Format all files (Go, Nix, YAML)
-nix fmt
-
-# Check formatting
-nix flake check
-
-# Build the binary
-nix build
-
-# Validate goreleaser config
-goreleaser check
-```
-
-## How it works
-
-1. Read the PEM file and convert it to PKCS#8 DER format
-2. Fetch a wrapping public key from KMS
-   - AWS: `GetParametersForImport` with `RSA_AES_KEY_WRAP_SHA_256` and `RSA_4096`
-   - GCP: `GetImportJob`; only SHA-256 RSA-OAEP + AES-KWP import methods are supported
-3. Encrypt the private key using RSA-AES Key Wrap (SHA-256)
-4. Import the encrypted key material into KMS
-   - AWS: `ImportKeyMaterial` with `KEY_MATERIAL_DOES_NOT_EXPIRE`
-   - GCP: `ImportCryptoKeyVersion` with `RSA_SIGN_PKCS1_2048_SHA256`
-5. (with `-v`) Sign a JWT using the imported KMS key version and verify it against the GitHub API (`GET /app`)
-6. (with `-d`, or upon interactive confirmation) Delete the PEM file
+Release packaging is configured in [dist-workspace.toml](dist-workspace.toml).
+The [build workflow](.github/workflows/dist.yaml) contains the reproduction commands;
+the [release workflow](.github/workflows/release.yaml) publishes tags matching
+the package version in [Cargo.toml](Cargo.toml).

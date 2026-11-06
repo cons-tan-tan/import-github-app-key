@@ -1,0 +1,28 @@
+name: Cache GC
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+
+concurrency:
+  group: hestia-gc
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Set up Nix and Hestia
+        uses: $/.github/actions/setup-nix
+      - name: Collect unused cache entries
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: '"$HESTIA_BIN" gc'

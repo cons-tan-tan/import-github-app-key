@@ -5,6 +5,17 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   check:
-    uses: ./.github/workflows/check.yaml
+    uses: $/.github/workflows/check.yaml
+
+  distribution:
+    uses: $/.github/workflows/dist.yaml
