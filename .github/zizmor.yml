@@ -1,0 +1,6 @@
+rules:
+  unpinned-uses:
+    config:
+      # actions.lock pins commits; gh-actions-lock verifies coverage and provenance.
+      policies:
+        "*": ref-pin

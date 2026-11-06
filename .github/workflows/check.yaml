@@ -1,0 +1,60 @@
+name: Check
+
+on:
+  workflow_call:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  nix:
+    runs-on: ubuntu-latest
+
+    steps:
+      - parallel:
+          - name: Check out source
+            uses: actions/checkout@v7.0.1
+            with:
+              persist-credentials: false
+          - name: Set up Nix and Hestia
+            uses: $/.github/actions/setup-nix
+
+      - parallel:
+          - name: Check Nix flake
+            run: |
+              nix flake check --all-systems --no-build
+              nix flake check
+          - name: Build Nix package
+            run: nix build --no-link
+          - name: Audit dependencies
+            run: |
+              nix profile add --inputs-from . nixpkgs#cargo-audit
+              cargo audit
+          - name: Verify action lockfile
+            env:
+              GH_TOKEN: ${{ github.token }}
+            run: nix run --inputs-from . nixpkgs#gh-actions-lock -- --verify
+
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - parallel:
+          - name: Check out source
+            uses: actions/checkout@v7.0.1
+            with:
+              persist-credentials: false
+          - name: Set up Nix and Hestia
+            uses: $/.github/actions/setup-nix
+      - name: Install CI tools
+        run: nix profile add .#ci-tools
+
+      - name: Lint Rust
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run Rust tests
+        run: cargo test --locked

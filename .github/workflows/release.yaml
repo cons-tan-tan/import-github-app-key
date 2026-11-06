@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  check:
+    uses: $/.github/workflows/check.yaml
+
+  build:
+    uses: $/.github/workflows/dist.yaml
+    with:
+      tag: ${{ github.ref_name }}
+
+  release:
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Set up Nix and Hestia
+        uses: $/.github/actions/setup-nix
+        id: nix
+        background: true
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8.0.2
+        id: artifacts
+        background: true
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Wait for Nix setup
+        wait: nix
+      - name: Install publishing tools
+        run: nix profile add --inputs-from . nixpkgs#gh nixpkgs#coreutils
+
+      - name: Wait for release artifacts
+        wait: artifacts
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          archives=(dist/*.tar.gz dist/*.zip)
+          if [[ ${#archives[@]} -ne 6 ]]; then
+            echo "Expected all six release archives before publishing" >&2
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do test -s "$archive.sha256"; done
+          (cd dist && sha256sum --check -- *.sha256 && sha256sum -- *.tar.gz *.zip > checksums.txt)
+          # Pass all assets together so gh uploads them before publishing an immutable release.
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes

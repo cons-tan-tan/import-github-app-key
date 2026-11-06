@@ -1,0 +1,7 @@
+.direnv
+.envrc
+/target
+/dist
+/result
+/import-github-app-key
+*.exe

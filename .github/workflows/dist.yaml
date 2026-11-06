@@ -1,0 +1,94 @@
+name: Build release artifacts
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag; empty uses the Cargo version for a preview build
+        type: string
+        default: ""
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cargo-jobs: 4
+            native: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cargo-jobs: 4
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-msvc
+            cargo-jobs: 4
+          - os: ubuntu-latest
+            target: aarch64-pc-windows-msvc
+            cargo-jobs: 4
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            cargo-jobs: 2
+            native: true
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            cargo-jobs: 2
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: ${{ matrix.cargo-jobs }}
+      RELEASE_TARGET: ${{ matrix.target }}
+
+    steps:
+      - parallel:
+          - name: Check out source
+            uses: actions/checkout@v7.0.1
+            with:
+              persist-credentials: false
+          - name: Set up Nix and Hestia
+            uses: $/.github/actions/setup-nix
+      - name: Install release tools
+        run: nix profile add .#release-tools
+
+      - name: Build distribution
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[] | select(.name == "import-github-app-key") | .version')
+          tag=${RELEASE_TAG:-v$version}
+          if [[ "$tag" != "v$version" ]]; then
+            echo "Tag $tag does not match Cargo version $version" >&2
+            exit 1
+          fi
+          dist build --artifacts local --tag "$tag" --target "$RELEASE_TARGET"
+
+      - parallel:
+          - name: Inspect distribution
+            shell: bash
+            run: |
+              binary="target/$RELEASE_TARGET/dist/import-github-app-key"
+              if [[ "$RELEASE_TARGET" == *-windows-* ]]; then binary+=.exe; fi
+              test-release-binary "$RELEASE_TARGET" "$binary"
+              (cd target/distrib && sha256sum --check -- *.sha256)
+          - name: Run native binary
+            if: matrix.native
+            shell: bash
+            run: |
+              "target/$RELEASE_TARGET/dist/import-github-app-key" --version
+              "target/$RELEASE_TARGET/dist/import-github-app-key" --help
+          - name: Upload release artifacts
+            uses: actions/upload-artifact@v7.0.2
+            with:
+              name: release-${{ matrix.target }}
+              compression-level: 0
+              path: |
+                target/distrib/*.tar.gz
+                target/distrib/*.zip
+                target/distrib/*.sha256
+              if-no-files-found: error
