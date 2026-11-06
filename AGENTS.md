@@ -18,6 +18,8 @@ from the requested change without asking for confirmation at each step.
 - Nix: `nix flake check && nix build`.
 - Dependencies: `cargo audit`; exceptions and their rationale live in
   [.cargo/audit.toml](.cargo/audit.toml).
+- Actions: regenerate `.github/workflows/actions.lock` with `gh-actions-lock`
+  after changing `uses:` references; commit the generated file without hand edits.
 
 ## Change rules
 

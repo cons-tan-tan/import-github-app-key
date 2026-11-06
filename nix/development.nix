@@ -31,6 +31,7 @@
         packages = [
           config.packages.ci-tools
           pkgs.cargo-audit
+          pkgs.gh-actions-lock
           pkgs.rust-analyzer
           config.treefmt.build.wrapper
         ];

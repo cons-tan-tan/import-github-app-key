@@ -14,7 +14,7 @@ jobs:
     steps:
       - parallel:
           - name: Check out source
-            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            uses: actions/checkout@v7.0.1
             with:
               persist-credentials: false
           - name: Set up Nix and Hestia
@@ -31,6 +31,10 @@ jobs:
             run: |
               nix profile add --inputs-from . nixpkgs#cargo-audit
               cargo audit
+          - name: Verify action lockfile
+            env:
+              GH_TOKEN: ${{ github.token }}
+            run: nix run --inputs-from . nixpkgs#gh-actions-lock -- --verify
 
   rust:
     strategy:
@@ -42,7 +46,7 @@ jobs:
     steps:
       - parallel:
           - name: Check out source
-            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            uses: actions/checkout@v7.0.1
             with:
               persist-credentials: false
           - name: Set up Nix and Hestia
