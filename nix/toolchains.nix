@@ -12,6 +12,17 @@
     {
       _module.args = {
         inherit pkgs;
+        darwinBuildEnv = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+          # The processed Nix SDK omits libiconv. Use Apple's original stubs so
+          # profile-installed tools link system libraries without Nix dylibs.
+          export SDKROOT=${pkgs.apple-sdk.src}
+          export MACOSX_DEPLOYMENT_TARGET=11.0
+          export CC=${pkgs.llvmPackages.clang-unwrapped}/bin/clang
+          export CXX=${pkgs.llvmPackages.clang-unwrapped}/bin/clang++
+          export AR=${pkgs.llvmPackages.llvm}/bin/llvm-ar
+          export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER="$CC"
+          export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$CC"
+        '';
         rustToolchains = {
           native = pkgs.rust-bin.fromRustupToolchain toolchainConfig;
           release = pkgs.rust-bin.fromRustupToolchain (

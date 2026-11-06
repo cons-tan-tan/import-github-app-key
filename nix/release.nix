@@ -2,6 +2,7 @@
   perSystem =
     {
       config,
+      darwinBuildEnv,
       pkgs,
       rustToolchains,
       ...
@@ -71,15 +72,7 @@
           export XWIN_CRT_VERSION=14.44.17.14
           export XWIN_CACHE_DIR="''${XDG_CACHE_HOME:-$HOME/.cache}/import-github-app-key-xwin-$XWIN_SDK_VERSION-$XWIN_CRT_VERSION"
         ''}
-        ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
-          export SDKROOT=${pkgs.apple-sdk}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
-          export MACOSX_DEPLOYMENT_TARGET=11.0
-          export CC=${pkgs.llvmPackages.clang-unwrapped}/bin/clang
-          export CXX=${pkgs.llvmPackages.clang-unwrapped}/bin/clang++
-          export AR=${pkgs.llvmPackages.llvm}/bin/llvm-ar
-          export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER="$CC"
-          export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$CC"
-        ''}
+        ${darwinBuildEnv}
         exec ${pkgs.cargo-dist}/bin/dist "$@"
       '';
     in

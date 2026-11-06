@@ -2,6 +2,7 @@
   perSystem =
     {
       config,
+      darwinBuildEnv,
       pkgs,
       rustToolchains,
       ...
@@ -14,6 +15,14 @@
           pkgs.stdenv.cc
           pkgs.cmake
           pkgs.pkg-config
+        ]
+        ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+          (pkgs.lib.hiPrio (
+            pkgs.writeShellScriptBin "cargo" ''
+              ${darwinBuildEnv}
+              exec ${rustToolchains.native}/bin/cargo "$@"
+            ''
+          ))
         ];
         pathsToLink = [ "/bin" ];
       };
