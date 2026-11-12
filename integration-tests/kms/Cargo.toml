@@ -1,0 +1,30 @@
+[package]
+name = "kms-integration-tests"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+# Keep the emulator out of the application's dependency graph and lockfile.
+[workspace]
+
+[dev-dependencies]
+import-github-app-key = { path = "../.." }
+kms-emulator = { package = "service-com-amazonaws-kms-trentservice", git = "https://github.com/aws/aws-emulator", rev = "7753983c6e495ec3612695b1336bf4936fc7b7fd" }
+engine = { package = "aws-emulator-engine", git = "https://github.com/aws/aws-emulator", rev = "7753983c6e495ec3612695b1336bf4936fc7b7fd" }
+smithy-server-runtime = { package = "aws-emulator-smithy-server-runtime", git = "https://github.com/aws/aws-emulator", rev = "7753983c6e495ec3612695b1336bf4936fc7b7fd" }
+aws-sdk-kms = { version = "1", default-features = false, features = ["rt-tokio"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+rsa = { version = "0.9.10", default-features = false, features = ["std", "sha2"] }
+secrecy = "0.10"
+serde_json = "1"
+sha2 = { version = "0.10", features = ["oid"] }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
+
+[profile.dev]
+debug = 0
+
+[lints.rust]
+unsafe_code = "forbid"

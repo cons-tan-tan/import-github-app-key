@@ -16,6 +16,11 @@ from the requested change without asking for confirmation at each step.
 - Rust: `cargo test --locked` and `cargo clippy --locked --all-targets -- -D warnings`.
 - Format Rust/Nix/YAML: `nix fmt` (Rust only: `cargo fmt --all`).
 - Nix: `nix flake check && nix build`.
+- AWS KMS integration: `nix build .#kms-integration-tests`. Run when changing
+  AWS import/signing, key wrapping, or workflow behavior. This separate crate
+  also runs in its own CI job and requires several GiB of build memory.
+  After changing the root package version or dependencies, refresh the integration
+  lockfile with `cargo update --manifest-path integration-tests/kms/Cargo.toml --package import-github-app-key`.
 - Dependencies: `cargo audit`; exceptions and their rationale live in
   [.cargo/audit.toml](.cargo/audit.toml).
 - Actions: regenerate `.github/workflows/actions.lock` with `gh-actions-lock`

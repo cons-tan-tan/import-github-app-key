@@ -36,6 +36,20 @@ jobs:
               GH_TOKEN: ${{ github.token }}
             run: nix run --inputs-from . nixpkgs#gh-actions-lock -- --verify
 
+  kms-integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - parallel:
+          - name: Check out source
+            uses: actions/checkout@v7.0.1
+            with:
+              persist-credentials: false
+          - name: Set up Nix and Hestia
+            uses: $/.github/actions/setup-nix
+      - name: Test AWS KMS integration
+        run: nix build .#kms-integration-tests --no-link
+
   rust:
     strategy:
       fail-fast: false

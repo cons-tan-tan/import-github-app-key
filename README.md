@@ -96,6 +96,13 @@ Use `nix develop` for the development tools. Check commands and contribution rul
 are in [AGENTS.md](AGENTS.md); the executable CI definitions are in
 [check.yaml](.github/workflows/check.yaml).
 
+The optional [AWS KMS integration suite](integration-tests/kms) uses an in-memory
+AWS emulator and the throwaway keys in `testdata/`, without cloud credentials.
+Its dependencies are isolated from the normal build and tests. Use the dedicated
+Nix target listed in [AGENTS.md](AGENTS.md); the first build needs several GiB of
+memory. The suite checks key import, signing, dry-run, and PEM preservation, but
+does not establish compatibility with every behavior of the live AWS service.
+
 Release packaging is configured in [dist-workspace.toml](dist-workspace.toml).
 The [build workflow](.github/workflows/dist.yaml) contains the reproduction commands;
 the [release workflow](.github/workflows/release.yaml) publishes tags matching
