@@ -1,7 +1,39 @@
 # import-github-app-key
 
-Import GitHub App RSA private keys into AWS KMS or Google Cloud KMS so subsequent
-JWT signing can run in KMS without loading the private key into your application.
+Import GitHub App private keys into [AWS KMS](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys.html)
+or [Google Cloud KMS](https://docs.cloud.google.com/kms/docs/key-import) so your
+application can sign JWTs through KMS without reading the private key.
+
+## Why this tool?
+
+GitHub [suggests storing App private keys in a key vault and making them sign-only](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps#storing-private-keys).
+With this approach, your application requests signatures from KMS while the
+private key stays in KMS.
+
+Importing GitHub's downloaded PEM requires format conversion and key wrapping
+to protect it in transit. `import-github-app-key` handles that work for you:
+
+- **One import command.** Takes the PEM directly and handles conversion,
+  wrapping, and import for either provider, without custom shell scripts or
+  separate OpenSSL commands.
+- **Careful key handling.** Converts and wraps the key in memory without
+  creating plaintext intermediate files. Plaintext buffers owned by the tool
+  are cleared when released, including on errors, before upload or prompts.
+- **Verify before cleanup.** With `--verify`, confirms that the imported key
+  can authenticate as your GitHub App by signing a JWT in KMS and calling the
+  GitHub API. Requested verification must succeed before PEM deletion.
+
+After [setting up credentials and the destination KMS resources](#prerequisites),
+import and verify an AWS key with:
+
+```sh
+import-github-app-key --verify 12345 \
+  arn:aws:kms:ap-northeast-1:123456789012:key/your-key-id ./private-key.pem
+```
+
+See [Usage](#usage) for Google Cloud KMS. Configure your application's JWT signing
+to use the imported key through KMS. See [Key handling and deletion](#key-handling-and-deletion)
+for the limits of memory clearing and file deletion.
 
 ## Install and run
 
@@ -31,14 +63,14 @@ to verify downloaded files.
 
 The input must be an unencrypted RSA-2048 private key in PKCS#1 or PKCS#8 PEM format.
 
-For AWS KMS (the default provider):
+For [AWS KMS](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-conceptual.html) (the default provider):
 
 - Configure AWS credentials and a region through your AWS profile or environment
   variables (such as `AWS_REGION`).
 - Create a KMS key with `KeySpec: RSA_2048`, `KeyUsage: SIGN_VERIFY`, and
   `Origin: EXTERNAL`.
 
-For Google Cloud KMS:
+For [Google Cloud KMS](https://docs.cloud.google.com/kms/docs/importing-a-key):
 
 - Configure Application Default Credentials.
 - Create a CryptoKey for asymmetric signing and an active ImportJob using
