@@ -1,6 +1,7 @@
 .direnv
 .envrc
 /target
+/integration-tests/kms/target
 /dist
 /result
 /import-github-app-key

@@ -23,6 +23,7 @@
       imports = [
         ./nix/development.nix
         ./nix/formatting.nix
+        ./nix/kms-integration-tests.nix
         ./nix/package.nix
         ./nix/release-checks.nix
         ./nix/release.nix
